@@ -1,97 +1,108 @@
-markdown
+Hier ist eine vollständige README-Datei, die alle erforderlichen Schritte und Befehle enthält, um Docker, Git, die Firewall-Einstellungen und das Deployment eines GitHub-Repositories auf einer EC2-Instanz zu konfigurieren:
 
-# Webhook Deployment Project
+```markdown
+# Docker Deployment Script
 
-Dieses Projekt richtet einen Webhook-Server ein, der automatische Deployments ausführt, wenn Push-Events von GitHub empfangen werden.
+Dieses Skript installiert Docker, konfiguriert die Firewall, klont ein Git-Repository und startet einen Docker-Container.
 
-## Voraussetzungen
+## Anleitung
 
-- Ein Computer oder Server mit installiertem Docker
-- Git installiert (falls nicht, siehe [Git Installationsanleitung](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git))
+Führen Sie die folgenden Befehle in Ihrer EC2-Instanz aus:
 
-## Schritt-für-Schritt-Anleitung
+### Installation und Konfiguration
 
-### 1. Repository klonen
+```sh
+#!/bin/bash
 
-1.1 Öffnen Sie die Eingabeaufforderung (Windows) oder das Terminal (Mac/Linux).
+# Aktualisiere die Paketliste und installiere benötigte Pakete
+sudo apt update
+sudo apt install apt-transport-https ca-certificates curl software-properties-common git -y
 
-1.2 Führen Sie den folgenden Befehl aus, um das Repository zu klonen:
+# Füge den Docker GPG-Schlüssel hinzu
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 
-```bash
+# Füge das Docker Repository hinzu
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Aktualisiere die Paketliste erneut
+sudo apt update
+
+# Installiere Docker
+sudo apt install docker-ce -y
+
+# Starte den Docker-Dienst und aktiviere ihn, damit er beim Booten startet
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# Füge den aktuellen Benutzer zur Docker-Gruppe hinzu
+sudo usermod -aG docker $USER
+
+# Setze die Firewall-Regeln, um Port 8080 und Port 80 freizugeben
+sudo ufw allow 8080
+sudo ufw allow 80
+
+# Aktualisiere die Gruppenzugehörigkeit im laufenden Terminal
+newgrp docker
+
+# Klone das Git-Repository
 git clone https://github.com/Michi-Meierdiecks/docker-deplay-puplic.git
 cd docker-deplay-puplic
 
-2. Docker-Image bauen
-
-2.1 Stellen Sie sicher, dass Docker installiert und gestartet ist. Falls nicht, laden Sie Docker von der Docker-Website herunter und installieren Sie es.
-
-2.2 Führen Sie den folgenden Befehl aus, um das Docker-Image zu bauen:
-
-bash
-
+# Baue das Docker-Image
 docker build -t webhookd-deploy .
 
-3. Docker-Container starten
-
-3.1 Starten Sie den Docker-Container mit dem folgenden Befehl:
-
-bash
-
+# Starte einen Docker-Container aus dem erstellten Image
 docker run -d -p 8080:8080 -p 80:80 --name webhookd-deploy webhookd-deploy
 
-4. GitHub-Webhooks konfigurieren
+# Setze die erforderlichen Berechtigungen für das Update-Skript
+sudo chmod +x ~/docker-deplay-puplic/update.sh
 
-4.1 Gehen Sie zu Ihrem GitHub-Repository.
-
-4.2 Navigieren Sie zu Settings > Webhooks.
-
-4.3 Klicken Sie auf Add webhook.
-
-4.4 Füllen Sie das Formular wie folgt aus:
-
-    Payload URL: http://<Ihre-Server-IP>:8080/hooks/deploy
-    Content type: application/json
-    Secret: Optional, aber empfohlen
-    Events: Just the push event
-
-4.5 Klicken Sie auf Add webhook.
-5. Überprüfung
-
-5.1 Machen Sie eine Änderung an Ihrem GitHub-Repository und pushen Sie diese.
-
-5.2 Überprüfen Sie, ob der Webhook-Server die Anfrage empfängt und das Deployment-Skript ausführt, indem Sie die Logs des Containers ansehen:
-
-bash
-
+# Zeige die Logs des gestarteten Containers an
 docker logs webhookd-deploy
+```
 
-6. Fehlerbehebung
+### Automatische Aktualisierung
 
-    Docker-Container läuft nicht: Stellen Sie sicher, dass Docker gestartet ist und der Container läuft:
+Dieses Setup verwendet Webhooks, um automatische Updates durchzuführen, wenn neue Änderungen an das GitHub-Repository gepusht werden.
 
-    bash
+1. Erstelle ein Webhook in deinem GitHub-Repository:
+    - Gehe zu den Einstellungen deines Repositories.
+    - Klicke auf "Webhooks" und dann auf "Add webhook".
+    - Setze die Payload-URL auf `http://<YOUR_EC2_PUBLIC_IP>:8080/hooks/deploy`.
+    - Wähle `application/json` als Content-Type.
+    - Setze das Ereignis auf "Just the push event".
+    - Klicke auf "Add webhook".
 
-docker ps
+2. Die `hooks.json` Datei in deinem Repository sollte wie folgt aussehen:
 
-Logs überprüfen: Falls Probleme auftreten, überprüfen Sie die Logs des Containers:
+    ```json
+    [
+      {
+        "id": "deploy",
+        "execute-command": "/home/ubuntu/selfmade-pipeline/auto-deploy-website/update.sh",
+        "command-working-directory": "/home/ubuntu/selfmade-pipeline/auto-deploy-website"
+      }
+    ]
+    ```
 
-bash
+3. Das `update.sh` Skript sollte sicherstellen, dass das Repository aktualisiert wird und der Webserver neu gestartet wird:
 
-    docker logs webhookd-deploy
+    ```sh
+    #!/bin/bash
+    cd /home/ubuntu/selfmade-pipeline/auto-deploy-website
+    git pull origin main
+    sudo systemctl restart apache2
+    ```
 
-Wichtige Dateien im Repository
+### Troubleshooting
 
-    Dockerfile: Enthält Anweisungen, wie das Docker-Image gebaut wird.
-    start.sh: Start-Skript für den Webhook-Server.
-    hooks.json: Konfigurationsdatei für Webhooks.
-    update.sh: Skript für automatische Deployments.
-    index.html: Beispiel-HTML-Datei für die Website.
+- Stellen Sie sicher, dass Ihre Sicherheitsgruppe in AWS die Ports 80 und 8080 zulässt.
+- Möglicherweise müssen Sie sich nach der Ausführung des Skripts ab- und wieder anmelden, damit die Gruppenzugehörigkeit wirksam wird.
+- Das Update-Skript wird automatisch ausgeführt, wenn ein neuer Commit in das Repository gepusht wird.
 
-Kontakt
+## Hinweise
 
-Falls Sie Fragen oder Probleme haben, kontaktieren Sie bitte den Projektinhaber über das GitHub-Repository.
+Dieses Setup ermöglicht die automatische Bereitstellung und Aktualisierung einer Website basierend auf Commits in einem GitHub-Repository. Stellen Sie sicher, dass alle Pfade und Berechtigungen korrekt gesetzt sind, um einen reibungslosen Ablauf zu gewährleisten.
+```
 
-perl
-
-
-Diese `README.md`-Datei enthält alle notwendigen Schritte und Informationen, die ein Benutzer benötigt, um das Projekt einzurichten und zu nutzen. Kopieren Sie diesen Text in eine Datei namens `README.md` im Stammverzeichnis Ihres Projekts.
+Diese README-Datei führt alle notwendigen Schritte und Befehle aus, um eine EC2-Instanz zu konfigurieren, Docker zu installieren, ein Git-Repository zu klonen, einen Docker-Container zu starten und automatische Updates über GitHub-Webhooks zu ermöglichen.
