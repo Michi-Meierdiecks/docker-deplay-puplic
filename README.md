@@ -1,5 +1,3 @@
-Hier ist eine vollständige README-Datei, die alle erforderlichen Schritte und Befehle enthält, um Docker, Git, die Firewall-Einstellungen und das Deployment eines GitHub-Repositories auf einer EC2-Instanz zu konfigurieren:
-
 ```markdown
 # Docker Deployment Script
 
